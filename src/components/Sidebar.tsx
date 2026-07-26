@@ -37,7 +37,9 @@ export default function Sidebar({
   const renameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (renamingId && renameRef.current) renameRef.current.focus();
+    if (renamingId) {
+      renameRef.current?.focus();
+    }
   }, [renamingId]);
 
   const nonArchived = conversations.filter((c) => !c.isArchived);
@@ -65,12 +67,13 @@ export default function Sidebar({
       <div
         className={cn(
           'group relative flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors',
-          isActive ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+          isActive ? 'bg-emerald-100 dark:bg-gray-700 text-emerald-700 dark:text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'
         )}
       >
         {isRenaming ? (
           <input
             ref={renameRef}
+            autoFocus
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
             onBlur={commitRename}
@@ -79,7 +82,7 @@ export default function Sidebar({
               if (e.key === 'Escape') setRenamingId(null);
             }}
             onClick={(e) => e.stopPropagation()}
-            className="flex-1 bg-gray-600 text-white text-sm px-2 py-1 rounded outline-none border-none"
+            className="flex-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 text-sm px-2 py-1 rounded outline-none border-none"
             placeholder="Chat title"
             maxLength={60}
           />
@@ -181,12 +184,12 @@ export default function Sidebar({
       <aside
       className={cn(
         'fixed inset-y-0 left-0 z-50 flex w-64 flex-col transform transition-transform duration-300',
-        'bg-gray-950 border-r border-gray-800 text-white',
+        'bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white',
         isOpen ? 'translate-x-0' : '-translate-x-full'
       )}
       >
         {/* Logo + controls */}
-        <div className="flex items-center gap-2 px-3 py-4 border-b border-gray-800">
+        <div className="flex items-center gap-2 px-3 py-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-sm shadow-emerald-500/20">
             <span className="text-white text-base leading-none">✨</span>
           </div>
@@ -196,7 +199,7 @@ export default function Sidebar({
           <button
             onClick={onNewConversation}
             title="New conversation"
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 4v16m8-8H4" />
@@ -207,7 +210,7 @@ export default function Sidebar({
           <button
             onClick={onToggle}
             title="Close sidebar"
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M6 18L18 6M6 6l12 12" />
@@ -256,7 +259,7 @@ export default function Sidebar({
               {userName.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-gray-200 truncate">{userName}</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-200 truncate">{userName}</p>
               <p className="text-xs text-gray-500">Free Plan</p>
             </div>
             {onChangeName && (

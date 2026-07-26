@@ -128,6 +128,7 @@ export async function sendMessageToAIStreamed(
         stream: true,
         temperature: TEMPERATURE,
       });
+      console.log(response);
 
       // Stream the chunks
       let full = '';

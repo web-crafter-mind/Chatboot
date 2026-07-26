@@ -7,8 +7,10 @@ import TypingIndicator from '@/components/TypingIndicator';
 import WelcomeScreen from '@/components/WelcomeScreen';
 import ThemeToggle from '@/components/ThemeToggle';
 import UsernameSetup from '@/components/UsernameSetup';
-import { sendMessageToAIStreamed } from '@/utils/ai';
+import { sendMessageToAIStreamed, sendMessageToAI } from '@/utils/ai';
 import { useProfile } from '@/context/ProfileContext';
+import { supabase } from "@/lib/supabase";
+
 
 let messageCounter = 0;
 const generateId = () => `msg-${Date.now()}-${++messageCounter}`;
@@ -28,6 +30,58 @@ export default function App() {
   const [aiStatus, setAiStatus] = useState<AIStatus>('loading');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    loadConversations();
+  }, []);
+  
+  async function loadConversations() {
+    const { data: conversationsData, error } = await supabase
+      .from("conversations")
+      .select("*")
+      .order("created_at", { ascending: false });
+  
+    if (error) {
+      console.error(error);
+      return;
+    }
+  
+    const loaded: Conversation[] = [];
+  
+    for (const conv of conversationsData) {
+      const { data: messagesData } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("conversation_id", conv.id)
+        .order("created_at", { ascending: true });
+  
+      loaded.push({
+        id: conv.id,
+        title: conv.title,
+        createdAt: new Date(conv.created_at),
+        messages:
+          messagesData?.map((msg) => ({
+            id: String(msg.id),
+            content: msg.content,
+            role: msg.role,
+            timestamp: new Date(msg.created_at),
+          })) || [],
+      });
+    }
+  
+    setConversations(loaded);
+  
+  const savedId = localStorage.getItem("activeConversationId");
+
+if (savedId === "new") {
+  setActiveConversationId(null);
+} else if (savedId && loaded.some(c => c.id === savedId)) {
+  setActiveConversationId(savedId);
+} else {
+  setActiveConversationId(null);
+}
+  }
+  
+
   // Show username setup when new profile detected
   useEffect(() => {
     if (isNewProfile) setShowUsernameSetup(true);
@@ -35,6 +89,13 @@ export default function App() {
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
   const messages = activeConversation?.messages ?? [];
+
+  useEffect(() => {
+    localStorage.setItem(
+      "activeConversationId",
+      activeConversationId ?? "new"
+    );
+  }, [activeConversationId]);
 
   // Wait for puter.js
   useEffect(() => {
@@ -71,6 +132,8 @@ export default function App() {
     if (isLoading) return;
     setError(null);
 
+    console.log("Send message called");
+
     const userMessage: Message = {
       id: generateId(),
       content,
@@ -95,11 +158,51 @@ export default function App() {
         messages: [userMessage, assistantMessage],
         createdAt: new Date(),
       };
+
+
+      
       setConversations((prev) => [newConversation, ...prev]);
+      try {
+        // Save conversation
+        const { error: convError } = await supabase
+          .from("conversations")
+          .insert({
+            id: newConversation.id,
+            title: newConversation.title,
+          });
+      
+        if (convError) {
+          console.error(convError);
+        }
+      
+        // Save first user message
+        const { data, error } = await supabase
+        .from("messages")
+        .insert({
+          conversation_id: newConversation.id,
+          role: "user",
+          content,
+        })
+        .select();
+      
+      console.log("Inserted message:", data);
+      
+      if (error) {
+        console.error("Message insert error:", error);
+      }
+      } catch (err) {
+        console.error(err);
+      }
+
       conversationId = newConversation.id;
       priorMessages = [];
       setActiveConversationId(conversationId);
     } else {
+      await supabase.from("messages").insert({
+        conversation_id: conversationId,
+        role: "user",
+        content,
+    });
       priorMessages = activeConversation?.messages ?? [];
       setConversations((prev) =>
         prev.map((conv) =>
@@ -122,21 +225,69 @@ export default function App() {
     const assistantId = assistantMessage.id;
 
     try {
-      await sendMessageToAIStreamed(content, history, (fullText) => {
-        setConversations((prev) =>
-          prev.map((conv) => {
-            if (conv.id !== finalConvId) return conv;
-            return {
-              ...conv,
-              messages: conv.messages.map((m) =>
-                m.id === assistantId ? { ...m, content: fullText } : m
-              ),
-            };
-          })
-        );
-        setLoadingLabel('Generating...');
-      });
-    } catch (err: any) {
+      let aiResponse = "";
+    
+      const success = await sendMessageToAIStreamed(
+        content,
+        history,
+        (fullText) => {
+          aiResponse = fullText;
+      
+          setConversations((prev) =>
+            prev.map((conv) =>
+              conv.id !== finalConvId
+                ? conv
+                : {
+                    ...conv,
+                    messages: conv.messages.map((m) =>
+                      m.id === assistantId
+                        ? { ...m, content: fullText }
+                        : m
+                    ),
+                  }
+            )
+          );
+        }
+      );
+      
+      if (!success) {
+        throw new Error("AI request failed");
+      }
+    
+        setLoadingLabel("Generating...");
+    
+        // Sirf pehle message par title generate karo
+        if (priorMessages.length === 0) {
+          const title = await sendMessageToAI(
+            `Generate a short chat title (maximum 4 words).
+        Return ONLY the title.
+        
+        User: ${content}
+        Assistant: ${aiResponse}`,
+            []
+          );
+        
+          await supabase
+            .from("conversations")
+            .update({ title })
+            .eq("id", finalConvId);
+        
+          setConversations(prev =>
+            prev.map(conv =>
+              conv.id === finalConvId
+                ? { ...conv, title }
+                : conv
+            )
+          );
+        }
+
+      
+    
+      if (error) {
+        console.error("Assistant message insert error:", error);
+      }
+    
+    }  catch (err: any) {
       console.error('Chat error:', err);
       setError(err?.message || 'Something went wrong. Please try again.');
       setConversations((prev) =>
@@ -165,11 +316,25 @@ export default function App() {
   };
 
   // Sidebar action handlers
-  const handleRename = (id: string, newTitle: string) => {
-    setConversations((prev) =>
-      prev.map((conv) => (conv.id === id ? { ...conv, title: newTitle } : conv))
+  const handleRename = async (id: string, newTitle: string) => {
+    setConversations(prev =>
+      prev.map(conv =>
+        conv.id === id
+          ? { ...conv, title: newTitle }
+          : conv
+      )
     );
+  
+    const { error } = await supabase
+      .from("conversations")
+      .update({ title: newTitle })
+      .eq("id", id);
+  
+    if (error) {
+      console.error(error);
+    }
   };
+
   const handlePin = (id: string) => {
     setConversations((prev) =>
       prev.map((conv) => (conv.id === id ? { ...conv, isPinned: !conv.isPinned } : conv))
@@ -181,9 +346,35 @@ export default function App() {
     );
     if (activeConversationId === id) setActiveConversationId(null);
   };
-  const handleDelete = (id: string) => {
-    setConversations((prev) => prev.filter((conv) => conv.id !== id));
-    if (activeConversationId === id) setActiveConversationId(null);
+  const handleDelete = async (id: string) => {
+    // Delete all messages
+    const { error: msgError } = await supabase
+      .from("messages")
+      .delete()
+      .eq("conversation_id", id);
+  
+    if (msgError) {
+      console.error(msgError);
+      return;
+    }
+  
+    // Delete conversation
+    const { error: convError } = await supabase
+      .from("conversations")
+      .delete()
+      .eq("id", id);
+  
+    if (convError) {
+      console.error(convError);
+      return;
+    }
+  
+    // Update UI
+    setConversations(prev => prev.filter(conv => conv.id !== id));
+  
+    if (activeConversationId === id) {
+      setActiveConversationId(null);
+    }
   };
 
   return (
@@ -257,9 +448,9 @@ export default function App() {
         )}
 
         {/* Message area */}
-        <div className="flex-1 overflow-y-auto bg-white dark:bg-gray-900">
+        <div className="flex-1 overflow-y-auto bg-white dark:bg-gray-900 pb-8">
           {messages.length === 0 ? (
-            <WelcomeScreen />
+             <WelcomeScreen onSuggestionClick={handleSendMessage} />
           ) : (
             <div className="pb-4">
               {messages.map((message, idx) => {
